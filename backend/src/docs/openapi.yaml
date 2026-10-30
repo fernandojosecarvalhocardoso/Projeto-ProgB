@@ -1,0 +1,1284 @@
+openapi: 3.0.3
+info:
+  title: API de Música
+  version: 1.2.0
+  description: |-
+    API REST de streaming de músicas.
+
+    **Como autenticar:** faça `POST /auth/login` (ou `/auth/register`), copie o `token` da resposta, clique em **Authorize** e cole o token. O prefixo `Bearer` é adicionado automaticamente.
+
+    **Papéis:** `user` (padrão) e `admin`. Somente admin cria, edita e exclui artistas, álbuns e músicas.
+servers:
+- url: /
+  description: Servidor atual
+security:
+- bearerAuth: []
+tags:
+- name: Auth
+- name: Users
+- name: Artists
+- name: Albums
+- name: Music
+- name: Music history
+- name: Search history
+- name: Favorites
+- name: Covers
+paths:
+  /auth/register:
+    post:
+      tags:
+      - Auth
+      summary: Cadastrar usuário
+      operationId: register
+      security: []
+      description: Cadastro público. O papel (`role`) é sempre `user`. Retorna o usuário e um token JWT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Usuário criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /auth/login:
+    post:
+      tags:
+      - Auth
+      summary: Fazer login
+      operationId: login
+      security: []
+      description: Retorna o usuário e um token JWT. Use o token no botão **Authorize**.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login realizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/me:
+    get:
+      tags:
+      - Auth
+      summary: Dados do usuário logado
+      operationId: me
+      responses:
+        '200':
+          description: Usuário atual
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /users:
+    get:
+      tags:
+      - Users
+      summary: Listar usuários
+      operationId: list_users
+      description: '`user` recebe apenas a si mesmo. `admin` recebe todos. O hash da senha nunca é retornado.'
+      parameters:
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Lista de usuários
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /users/{id}:
+    get:
+      tags:
+      - Users
+      summary: Buscar usuário por ID
+      operationId: get_user
+      description: '`user` só acessa o próprio ID (outros retornam 404). `admin` acessa qualquer um.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID do usuário
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Usuário
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Users
+      summary: Atualizar usuário
+      operationId: update_user
+      description: Atualização **parcial**. `user` só altera a si mesmo. Alterar `role` é permitido **somente a
+        admin**, que não pode rebaixar a si próprio. A criação de contas é feita em `/auth/register`.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID do usuário
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - Users
+      summary: Excluir usuário
+      operationId: delete_user
+      description: '`user` só apaga a si mesmo; `admin` apaga qualquer um. Remove em cascata histórico, buscas e
+        favoritos do usuário.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID do usuário
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Excluído
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /artists:
+    get:
+      tags:
+      - Artists
+      summary: Listar artista
+      operationId: list_artists
+      description: Qualquer usuário autenticado.
+      parameters:
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Lista de registros
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Artist'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - Artists
+      summary: Criar artista
+      operationId: create_artists
+      description: '**Somente admin.** '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArtistInput'
+      responses:
+        '201':
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artist'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /artists/{id}:
+    get:
+      tags:
+      - Artists
+      summary: Buscar artista por ID
+      operationId: get_artists
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID do artista
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Registro encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artist'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Artists
+      summary: Atualizar artista
+      operationId: update_artists
+      description: '**Somente admin.**  Atualização **parcial**: envie apenas os campos a alterar.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID do artista
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArtistInput'
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artist'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - Artists
+      summary: Excluir artista
+      operationId: delete_artists
+      description: '**Somente admin.**  A exclusão remove em cascata os registros dependentes.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID do artista
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Excluído
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /albums:
+    get:
+      tags:
+      - Albums
+      summary: Listar álbum
+      operationId: list_albums
+      description: Qualquer usuário autenticado.
+      parameters:
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Lista de registros
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Album'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - Albums
+      summary: Criar álbum
+      operationId: create_albums
+      description: '**Somente admin.** '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlbumInput'
+      responses:
+        '201':
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Album'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /albums/{id}:
+    get:
+      tags:
+      - Albums
+      summary: Buscar álbum por ID
+      operationId: get_albums
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID do álbum
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Registro encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Album'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Albums
+      summary: Atualizar álbum
+      operationId: update_albums
+      description: '**Somente admin.**  Atualização **parcial**: envie apenas os campos a alterar.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID do álbum
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlbumInput'
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Album'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - Albums
+      summary: Excluir álbum
+      operationId: delete_albums
+      description: '**Somente admin.**  A exclusão remove em cascata os registros dependentes.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID do álbum
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Excluído
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /music:
+    get:
+      tags:
+      - Music
+      summary: Listar música
+      operationId: list_music
+      description: Qualquer usuário autenticado.
+      parameters:
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Lista de registros
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Music'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - Music
+      summary: Criar música
+      operationId: create_music
+      description: '**Somente admin.** Aceita JSON ou `multipart/form-data` com o arquivo de capa no campo `cover`
+        (JPG, PNG ou WEBP, até 5 MB).'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MusicInput'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MusicInputMultipart'
+      responses:
+        '201':
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Music'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /music/{id}:
+    get:
+      tags:
+      - Music
+      summary: Buscar música por ID
+      operationId: get_music
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID da música
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Registro encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Music'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Music
+      summary: Atualizar música
+      operationId: update_music
+      description: '**Somente admin.** Aceita JSON ou `multipart/form-data` com o arquivo de capa no campo `cover`
+        (JPG, PNG ou WEBP, até 5 MB). Atualização **parcial**: envie apenas os campos a alterar.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID da música
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MusicInput'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MusicInputMultipart'
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Music'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - Music
+      summary: Excluir música
+      operationId: delete_music
+      description: '**Somente admin.** Aceita JSON ou `multipart/form-data` com o arquivo de capa no campo `cover`
+        (JPG, PNG ou WEBP, até 5 MB). A exclusão remove em cascata os registros dependentes.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID da música
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Excluído
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /music-history:
+    get:
+      tags:
+      - Music history
+      summary: Listar entrada do histórico de músicas
+      operationId: list_music_history
+      description: Retorna apenas os registros do usuário logado (inclusive para admin).
+      parameters:
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Lista de registros
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MusicHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - Music history
+      summary: Criar entrada do histórico de músicas
+      operationId: create_music_history
+      description: O `id_user` é sempre o do token; não precisa ser enviado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MusicHistoryInput'
+      responses:
+        '201':
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MusicHistory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /music-history/{id}:
+    get:
+      tags:
+      - Music history
+      summary: Buscar entrada do histórico de músicas por ID
+      operationId: get_music_history
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID da entrada (`id_history`)
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Registro encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MusicHistory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Music history
+      summary: Atualizar entrada do histórico de músicas
+      operationId: update_music_history
+      description: 'O `id_user` é sempre o do token; não precisa ser enviado. Atualização **parcial**: envie apenas
+        os campos a alterar.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID da entrada (`id_history`)
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MusicHistoryInput'
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MusicHistory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - Music history
+      summary: Excluir entrada do histórico de músicas
+      operationId: delete_music_history
+      description: Exclusão do registro.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID da entrada (`id_history`)
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Excluído
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /search-history:
+    get:
+      tags:
+      - Search history
+      summary: Listar entrada do histórico de buscas
+      operationId: list_search_history
+      description: Retorna apenas os registros do usuário logado (inclusive para admin).
+      parameters:
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Lista de registros
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SearchHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - Search history
+      summary: Criar entrada do histórico de buscas
+      operationId: create_search_history
+      description: O `id_user` é sempre o do token; não precisa ser enviado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchHistoryInput'
+      responses:
+        '201':
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchHistory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /search-history/{id}:
+    get:
+      tags:
+      - Search history
+      summary: Buscar entrada do histórico de buscas por ID
+      operationId: get_search_history
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID da entrada
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Registro encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchHistory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Search history
+      summary: Atualizar entrada do histórico de buscas
+      operationId: update_search_history
+      description: 'O `id_user` é sempre o do token; não precisa ser enviado. Atualização **parcial**: envie apenas
+        os campos a alterar.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID da entrada
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchHistoryInput'
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchHistory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+      - Search history
+      summary: Excluir entrada do histórico de buscas
+      operationId: delete_search_history
+      description: Exclusão do registro.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID da entrada
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Excluído
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /favorites:
+    get:
+      tags:
+      - Favorites
+      summary: Listar meus favoritos
+      operationId: list_favorites
+      responses:
+        '200':
+          description: Favoritos do usuário logado
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Favorite'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - Favorites
+      summary: Favoritar uma música
+      operationId: create_favorite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FavoriteInput'
+      responses:
+        '201':
+          description: Favoritada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /favorites/{id_music}:
+    delete:
+      tags:
+      - Favorites
+      summary: Remover dos favoritos
+      operationId: delete_favorite
+      parameters:
+      - name: id_music
+        in: path
+        required: true
+        description: ID da música
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Removido
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /covers/{filename}:
+    get:
+      tags:
+      - Covers
+      summary: Baixar imagem de capa
+      operationId: get_cover
+      security: []
+      description: Rota **pública**. Use o campo `cover_url` retornado em `/music`.
+      parameters:
+      - name: filename
+        in: path
+        required: true
+        schema:
+          type: string
+        example: invasor.jpg
+      responses:
+        '200':
+          description: Imagem
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Arquivo não encontrado
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Registro não encontrado
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum:
+          - user
+          - admin
+        created_at:
+          type: string
+          format: date-time
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          writeOnly: true
+        role:
+          type: string
+          enum:
+          - user
+          - admin
+          description: Somente admin pode enviar este campo.
+    RegisterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Maria
+        email:
+          type: string
+          format: email
+          example: maria@email.com
+        password:
+          type: string
+          minLength: 8
+          writeOnly: true
+      required:
+      - name
+      - email
+      - password
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+      required:
+      - email
+      - password
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
+          description: 'JWT para o header `Authorization: Bearer <token>`'
+    Artist:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        bio:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ArtistInput:
+      type: object
+      properties:
+        name:
+          type: string
+        bio:
+          type: string
+      required:
+      - name
+    Album:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        id_artist:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    AlbumInput:
+      type: object
+      properties:
+        title:
+          type: string
+        id_artist:
+          type: integer
+      required:
+      - title
+      - id_artist
+    Music:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        duration_seconds:
+          type: integer
+        id_album:
+          type: integer
+        genre:
+          type: string
+        id_artist:
+          type: integer
+        cover:
+          type: string
+          example: backend/covers/invasor.jpg
+        cover_url:
+          type: string
+          example: /covers/invasor.jpg
+        created_at:
+          type: string
+          format: date-time
+    MusicInput:
+      type: object
+      properties:
+        name:
+          type: string
+        duration_seconds:
+          type: integer
+        id_album:
+          type: integer
+        genre:
+          type: string
+        id_artist:
+          type: integer
+        cover:
+          type: string
+          description: Caminho já existente da capa (opcional).
+      required:
+      - name
+      - duration_seconds
+      - id_album
+      - id_artist
+    MusicInputMultipart:
+      type: object
+      properties:
+        name:
+          type: string
+        duration_seconds:
+          type: integer
+        id_album:
+          type: integer
+        genre:
+          type: string
+        id_artist:
+          type: integer
+        cover:
+          type: string
+          format: binary
+          description: Arquivo de imagem (JPG, PNG ou WEBP, até 5 MB).
+      required:
+      - name
+      - duration_seconds
+      - id_album
+      - id_artist
+    MusicHistory:
+      type: object
+      properties:
+        id_history:
+          type: integer
+        id_user:
+          type: integer
+        id_music:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    MusicHistoryInput:
+      type: object
+      properties:
+        id_music:
+          type: integer
+      required:
+      - id_music
+    SearchHistory:
+      type: object
+      properties:
+        id:
+          type: integer
+        search_query:
+          type: string
+        results:
+          type: string
+        id_user:
+          type: integer
+    SearchHistoryInput:
+      type: object
+      properties:
+        search_query:
+          type: string
+        results:
+          type: string
+      required:
+      - search_query
+    Favorite:
+      type: object
+      properties:
+        id_music:
+          type: integer
+        music_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    FavoriteCreated:
+      type: object
+      properties:
+        id_user:
+          type: integer
+        id_music:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    FavoriteInput:
+      type: object
+      properties:
+        id_music:
+          type: integer
+      required:
+      - id_music
+  responses:
+    BadRequest:
+      description: Requisição inválida (campo ausente ou formato incorreto)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'Campos obrigatórios: name'
+    Unauthorized:
+      description: Token ausente, inválido ou expirado (ou credenciais incorretas)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Token ausente
+    Forbidden:
+      description: Sem permissão para esta ação
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'Acesso negado: permissão insuficiente'
+    NotFound:
+      description: Registro não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Registro não encontrado
+    Conflict:
+      description: 'Conflito: valor duplicado ou referência inexistente'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Registro duplicado (valor já existe)
+  parameters:
+    limit:
+      name: limit
+      in: query
+      description: Máximo de itens (padrão 50, máximo 200)
+      schema:
+        type: integer
+        default: 50
+        maximum: 200
+    offset:
+      name: offset
+      in: query
+      description: Quantos itens pular
+      schema:
+        type: integer
+        default: 0
